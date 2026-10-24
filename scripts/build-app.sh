@@ -21,7 +21,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleName</key><string>Agent 進度</string>
   <key>CFBundleDisplayName</key><string>Agent 進度</string>
-  <key>CFBundleIdentifier</key><string>com.willis.agentmonitor</string>
+  <key>CFBundleIdentifier</key><string>com.chunweimacwm.agentmonitor</string>
   <key>CFBundleExecutable</key><string>AgentMonitor</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
