@@ -1,0 +1,8 @@
+.build/
+dist/
+.DS_Store
+.swiftpm/
+
+# 私人文件與分享草稿，不公開
+計畫書.md
+share/

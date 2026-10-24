@@ -1,0 +1,29 @@
+{
+  "name": "agent-progress",
+  "version": "0.1.0",
+  "description": "Writes each Claude Code thread's plan progress to a status file and lists all threads in a side pane (zh-Hant / English)",
+  "author": {
+    "name": "chunweimacwm"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "autoOpen": {
+      "type": "boolean",
+      "title": "開新對話時自動打開進度 pane",
+      "description": "關掉後可用 /progress 手動打開。",
+      "required": false,
+      "default": true
+    },
+    "language": {
+      "type": "string",
+      "title": "Language / 語言",
+      "description": "Pane language: zh-Hant or en",
+      "required": false,
+      "default": "zh-Hant",
+      "options": [
+        "zh-Hant",
+        "en"
+      ]
+    }
+  }
+}

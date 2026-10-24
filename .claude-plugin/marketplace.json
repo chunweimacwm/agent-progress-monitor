@@ -1,0 +1,14 @@
+{
+  "name": "agent-progress-monitor",
+  "description": "Agent Monitor: progress tracking for Claude Code threads (pairs with the macOS floating panel)",
+  "owner": {
+    "name": "chunweimacwm"
+  },
+  "plugins": [
+    {
+      "name": "agent-progress",
+      "source": "./mod/agent-progress",
+      "description": "Writes each Claude Code thread's plan progress to ~/.agent-progress and shows all threads in a side pane"
+    }
+  ]
+}
