@@ -32,7 +32,8 @@ final class Notifier: NSObject, UNUserNotificationCenterDelegate {
             let s = alert.session
             let content = UNMutableNotificationContent()
             content.title = alert.kind == .done ? L("\(s.tool.rawValue) 完成", "\(s.tool.rawValue) done") : L("\(s.tool.rawValue) 等你回覆", "\(s.tool.rawValue) needs you")
-            content.body = s.displayName + (s.progress.map { " · \($0.text)" } ?? "")
+            // Codex 短任務常在命名前就做完，沒標題時用專案資料夾名稱，比「新對話」好辨認
+            content.body = (s.title ?? s.project) + (s.progress.map { " · \($0.text)" } ?? "")
             if let url = s.jumpURL { content.userInfo = ["url": url.absoluteString] }
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
 
