@@ -7,7 +7,7 @@ final class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let model = MonitorModel()
     private let notifier = Notifier()
     private var alertsItem: NSMenuItem!
@@ -18,6 +18,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hosting: NSView!
     private var panel: NSPanel!
     private var statusItem: NSStatusItem!
+    private var lastNormalFrame: NSRect = .zero
+
+    static let maxPanelSize = NSSize(width: 640, height: 1600)
+
+    /// 舊版存下的位置字串可能帶著系統加的 tilingState（例如「填滿」），讀取前去掉，只留位置與大小
+    static func dropTilingState() {
+        let key = "NSWindow Frame AgentMonitorPanel"
+        guard let saved = UserDefaults.standard.string(forKey: key), saved.contains("tilingState") else { return }
+        let parts = saved.split(separator: " ").prefix(8)
+        UserDefaults.standard.set(parts.joined(separator: " "), forKey: key)
+    }
+
+    // 保險：萬一還是被撐大（超過上限），退回上一個正常大小
+    func windowDidResize(_ notification: Notification) {
+        guard let p = notification.object as? NSWindow else { return }
+        if p.frame.width > Self.maxPanelSize.width || p.frame.height > Self.maxPanelSize.height {
+            if lastNormalFrame != .zero { p.setFrame(lastNormalFrame, display: true) }
+        } else {
+            lastNormalFrame = p.frame
+        }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        guard let p = notification.object as? NSWindow, p.frame.width <= Self.maxPanelSize.width else { return }
+        lastNormalFrame = p.frame
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         panel = makePanel()
@@ -44,7 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.titlebarAppearsTransparent = true
         p.isFloatingPanel = true
         p.level = .floating
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        // 不參與系統的視窗並排（tiling）與 Cmd-` 切換：從多工畫面回來時，系統會依並排狀態把浮窗撐滿整個螢幕
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .fullScreenDisallowsTiling, .ignoresCycle]
+        p.maxSize = Self.maxPanelSize
         p.hidesOnDeactivate = false
         p.isMovableByWindowBackground = true
         p.isReleasedWhenClosed = false
@@ -56,10 +84,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         p.contentView = NSView(frame: p.contentLayoutRect)
         PanelBackdrop.apply(model.glass, to: p, content: hosting)
         // 記住位置與大小；第一次放在右上角
-        if !p.setFrameUsingName("AgentMonitorPanel"), let screen = NSScreen.main?.visibleFrame {
+        Self.dropTilingState()
+        if !p.setFrameUsingName("AgentMonitorPanel") || p.frame.width > Self.maxPanelSize.width,
+           let screen = NSScreen.main?.visibleFrame {
+            p.setContentSize(NSSize(width: 320, height: 360))
             p.setFrameOrigin(NSPoint(x: screen.maxX - 340, y: screen.maxY - 380))
         }
         p.setFrameAutosaveName("AgentMonitorPanel")
+        p.delegate = self
+        lastNormalFrame = p.frame
         return p
     }
 
