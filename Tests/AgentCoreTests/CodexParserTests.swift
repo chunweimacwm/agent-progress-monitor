@@ -82,3 +82,17 @@ private func parse(_ lines: [String]) -> CodexParser {
     #expect(u?.windows.first?.resetsAt != nil)
     #expect(u?.windows.last?.resetsAt == nil)
 }
+
+@Test func 接續舊對話也追蹤得到() throws {
+    AppLanguage.setting = .zh
+    // 對話三天前開始，今天又接著聊：檔案在舊日期資料夾，但最近才寫入
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent("codex-scan-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: home) }
+    let dir = home.appendingPathComponent("sessions/2026/10/10")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("rollout-2026-10-10T12-45-45-01a1.jsonl")
+    try (meta + "\n" + started + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let sessions = CodexScanner(codexHome: home).scan(now: Date())
+    #expect(sessions.map(\.sessionId) == ["01a1"])
+    #expect(sessions.first?.status == .working)
+}

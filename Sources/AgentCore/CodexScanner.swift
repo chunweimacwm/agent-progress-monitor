@@ -15,6 +15,8 @@ public final class CodexScanner {
     private var tracked: [URL: Tracked] = [:]
     private var titles: [String: String] = [:]
     private var indexStamp: Date?
+    private var lastDiscovery = Date.distantPast
+    static let discoveryInterval: TimeInterval = 30
 
     public init(codexHome: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")) {
         root = codexHome.appendingPathComponent("sessions")
@@ -64,23 +66,40 @@ public final class CodexScanner {
         }
     }
 
-    /// 今天與昨天的日期資料夾裡、6 小時內寫過的檔案
+    /// 6 小時內寫過的檔案。
+    /// Codex 把對話寫在「開始那天」的資料夾，之後接著聊也一直寫回那裡，所以不能只看今天和昨天：
+    /// 每 30 秒掃一次全部日期資料夾找最近寫過的檔，其餘時間只看已知的檔和今天／昨天（新對話才會即時出現）。
     private func recentFiles(now: Date) -> [URL: Date] {
         let fm = FileManager.default
-        let cal = Calendar.current
-        var out: [URL: Date] = [:]
-        for back in 0...1 {
-            guard let day = cal.date(byAdding: .day, value: -back, to: now) else { continue }
-            let c = cal.dateComponents([.year, .month, .day], from: day)
-            let dir = root.appendingPathComponent(String(format: "%04d/%02d/%02d", c.year!, c.month!, c.day!))
-            let files = (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-            for f in files where f.lastPathComponent.hasPrefix("rollout-") && f.pathExtension == "jsonl" {
-                guard let m = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-                      now.timeIntervalSince(m) <= Thresholds.hideAfter else { continue }
-                out[f] = m
+        var urls = Set(tracked.keys)
+        if now.timeIntervalSince(lastDiscovery) >= Self.discoveryInterval {
+            lastDiscovery = now
+            let all = fm.enumerator(at: root, includingPropertiesForKeys: [.contentModificationDateKey], options: [.skipsHiddenFiles])
+            while let f = all?.nextObject() as? URL {
+                if Self.isRollout(f) { urls.insert(f) }
+            }
+        } else {
+            let cal = Calendar.current
+            for back in 0...1 {
+                guard let day = cal.date(byAdding: .day, value: -back, to: now) else { continue }
+                let c = cal.dateComponents([.year, .month, .day], from: day)
+                let dir = root.appendingPathComponent(String(format: "%04d/%02d/%02d", c.year!, c.month!, c.day!))
+                for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [] where Self.isRollout(f) {
+                    urls.insert(f)
+                }
             }
         }
+        var out: [URL: Date] = [:]
+        for f in urls {
+            guard let m = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+                  now.timeIntervalSince(m) <= Thresholds.hideAfter else { continue }
+            out[f] = m
+        }
         return out
+    }
+
+    private static func isRollout(_ f: URL) -> Bool {
+        f.lastPathComponent.hasPrefix("rollout-") && f.pathExtension == "jsonl"
     }
 
     private func readNew(_ url: URL, into t: inout Tracked) {
