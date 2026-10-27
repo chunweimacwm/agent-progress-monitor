@@ -102,6 +102,9 @@ public final class CodexScanner {
         f.lastPathComponent.hasPrefix("rollout-") && f.pathExtension == "jsonl"
     }
 
+    /// 一次最多讀 4MB：紀錄檔可能上百 MB，整份讀進來會讓記憶體瞬間暴增
+    static let chunkSize = 4 << 20
+
     private func readNew(_ url: URL, into t: inout Tracked) {
         guard let h = try? FileHandle(forReadingFrom: url) else { return }
         defer { try? h.close() }
@@ -109,20 +112,25 @@ public final class CodexScanner {
         if end < t.offset { t = Tracked() } // 檔案被截斷或換掉，重讀
         guard end > t.offset else { return }
         try? h.seek(toOffset: t.offset)
-        guard let chunk = try? h.read(upToCount: Int(end - t.offset)) else { return }
-        t.offset = end
-        var buf = t.remainder + chunk
-        // 最後一行可能還沒寫完，留到下次
-        if let lastNewline = buf.lastIndex(of: 0x0A) {
-            t.remainder = buf[(lastNewline + 1)...]
-            buf = buf[..<lastNewline]
-        } else {
-            t.remainder = buf
-            return
-        }
-        let text = String(decoding: buf, as: UTF8.self)
-        for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
-            t.parser.feed(line: line)
+        while t.offset < end {
+            let more = autoreleasepool { () -> Bool in
+                guard let chunk = try? h.read(upToCount: min(Self.chunkSize, Int(end - t.offset))), !chunk.isEmpty else { return false }
+                t.offset += UInt64(chunk.count)
+                var buf = t.remainder + chunk
+                // 最後一行可能還沒寫完，留到下一段
+                guard let lastNewline = buf.lastIndex(of: 0x0A) else {
+                    t.remainder = buf
+                    return true
+                }
+                t.remainder = Data(buf[(lastNewline + 1)...])
+                buf = buf[..<lastNewline]
+                let text = String(decoding: buf, as: UTF8.self)
+                for line in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                    t.parser.feed(line: line)
+                }
+                return true
+            }
+            if !more { break }
         }
     }
 

@@ -96,3 +96,18 @@ private func parse(_ lines: [String]) -> CodexParser {
     #expect(sessions.map(\.sessionId) == ["01a1"])
     #expect(sessions.first?.status == .working)
 }
+
+@Test func 大檔分段讀取結果不變() throws {
+    AppLanguage.setting = .zh
+    // 中間塞超過一段（4MB）的雜訊行，確認跨段的行與結尾狀態仍正確
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent("codex-big-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: home) }
+    let dir = home.appendingPathComponent("sessions/2026/10/10")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let filler = #"{"type":"response_item","payload":{"type":"message","content":""# + String(repeating: "x", count: 1_000) + #""}}"#
+    let body = [meta, started, execPlan] + Array(repeating: filler, count: 6_000) + [completed]
+    try (body.joined(separator: "\n") + "\n").write(to: dir.appendingPathComponent("rollout-big.jsonl"), atomically: true, encoding: .utf8)
+    let s = CodexScanner(codexHome: home).scan(now: Date()).first
+    #expect(s?.plan?.count == 3)
+    #expect(s?.turnCompleted == true)
+}

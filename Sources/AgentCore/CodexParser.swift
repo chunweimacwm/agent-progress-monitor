@@ -21,12 +21,38 @@ public struct CodexParser {
 
     public init() {}
 
-    private static let markers = ["session_meta", "task_started", "task_complete", "turn_aborted", "function_call", "custom_tool_call", "token_count"]
+    /// 需要完整解析的事件類型
+    private static let wanted: Set<Substring> = ["task_started", "task_complete", "turn_aborted", "function_call", "custom_tool_call", "token_count"]
+
+    /// 行首的 "payload":{"type":"…"}；session_meta 等沒有這個結構的回傳 nil
+    static func payloadType(in head: Substring) -> Substring? {
+        guard let r = head.range(of: #""payload":{"type":""#) else { return nil }
+        let rest = head[r.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return rest[..<end]
+    }
+
+    static func callId(in head: Substring) -> String? {
+        guard let r = head.range(of: #""call_id":""#) else { return nil }
+        let rest = head[r.upperBound...]
+        guard let end = rest.firstIndex(of: "\"") else { return nil }
+        return String(rest[..<end])
+    }
 
     public mutating func feed(line: Substring) {
-        // 先用字串篩掉大部分無關的行，省下 JSON 解析
-        guard Self.markers.contains(where: { line.contains($0) }),
-              let data = line.data(using: .utf8),
+        // 先看行首的事件類型，大部分行（尤其是很大的工具輸出）不必 JSON 解析
+        let head = line.prefix(400)
+        if let type = Self.payloadType(in: head) {
+            if type == "function_call_output" || type == "custom_tool_call_output" {
+                // 只需要 call_id 來結束「等你回覆」，不解析整行
+                if !pendingQuestions.isEmpty, let id = Self.callId(in: head) { pendingQuestions.remove(id) }
+                return
+            }
+            guard Self.wanted.contains(type) else { return }
+        } else if !head.contains("\"session_meta\"") {
+            return
+        }
+        guard let data = line.data(using: .utf8),
               let o = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let p = o["payload"] as? [String: Any] else { return }
         let kind = o["type"] as? String
