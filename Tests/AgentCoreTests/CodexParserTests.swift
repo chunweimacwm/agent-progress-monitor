@@ -111,3 +111,42 @@ private func parse(_ lines: [String]) -> CodexParser {
     #expect(s?.plan?.count == 3)
     #expect(s?.turnCompleted == true)
 }
+
+@Test func 檔案後續寫入的完成也讀得到() throws {
+    AppLanguage.setting = .zh
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent("codex-append-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: home) }
+    let dir = home.appendingPathComponent("sessions/2026/10/10")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("rollout-append.jsonl")
+    try (meta + "\n" + started + "\n" + execPlan + "\n").write(to: file, atomically: true, encoding: .utf8)
+    let scanner = CodexScanner(codexHome: home)
+    #expect(scanner.scan(now: Date()).first?.status == .working)
+
+    // 先寫半行、再補完（模擬讀到一半的行）
+    let h = try FileHandle(forWritingTo: file)
+    try h.seekToEnd()
+    let line = Data((completed + "\n").utf8)
+    try h.write(contentsOf: line.prefix(20))
+    _ = scanner.scan(now: Date())
+    try h.write(contentsOf: line.dropFirst(20))
+    try h.close()
+    let s = scanner.scan(now: Date()).first
+    #expect(s?.turnCompleted == true)
+}
+
+@Test func 之後才寫入的標題也讀得到() throws {
+    AppLanguage.setting = .zh
+    let home = FileManager.default.temporaryDirectory.appendingPathComponent("codex-title-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: home) }
+    let dir = home.appendingPathComponent("sessions/2026/10/10")
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    try (meta + "\n" + started + "\n").write(to: dir.appendingPathComponent("rollout-t.jsonl"), atomically: true, encoding: .utf8)
+    let index = home.appendingPathComponent("session_index.jsonl")
+    try "".write(to: index, atomically: true, encoding: .utf8)
+    let scanner = CodexScanner(codexHome: home)
+    #expect(scanner.scan(now: Date()).first?.title == nil)
+    Thread.sleep(forTimeInterval: 0.05)
+    try #"{"id":"01a1","thread_name":"規劃下一步"}"#.appending("\n").write(to: index, atomically: false, encoding: .utf8)
+    #expect(scanner.scan(now: Date()).first?.title == "規劃下一步")
+}

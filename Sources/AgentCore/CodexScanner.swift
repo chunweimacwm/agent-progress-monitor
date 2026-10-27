@@ -91,7 +91,8 @@ public final class CodexScanner {
         }
         var out: [URL: Date] = [:]
         for f in urls {
-            guard let m = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+            // 直接問檔案系統：URL 會快取 resourceValues，重複用同一個 URL 會一直拿到第一次看到的修改時間
+            guard let m = (try? fm.attributesOfItem(atPath: f.path))?[.modificationDate] as? Date,
                   now.timeIntervalSince(m) <= Thresholds.hideAfter else { continue }
             out[f] = m
         }
@@ -136,7 +137,8 @@ public final class CodexScanner {
 
     /// session_index.jsonl：每行 {id, thread_name}，同一個 id 以最後一行為準
     private func refreshTitles() {
-        guard let m = try? indexFile.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
+        // 同上：不能用 URL 的 resourceValues（會快取），否則之後寫入的標題永遠讀不到
+        guard let m = (try? FileManager.default.attributesOfItem(atPath: indexFile.path))?[.modificationDate] as? Date,
               m != indexStamp, let data = try? Data(contentsOf: indexFile) else { return }
         indexStamp = m
         var next: [String: String] = [:]
